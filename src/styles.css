@@ -404,6 +404,8 @@ table.tabla { width: 100%; border-collapse: collapse; font-variant-numeric: tabu
 .estado-guardado.error { color: var(--error); background: var(--error-fondo); }
 .chip-incluido { color: var(--oro); background: var(--superficie); }
 .aviso-incluido { max-width: 1400px; margin: 12px auto 0; }
+.caja-compartida { background: var(--superficie); border: 1px solid var(--oro); border-radius: var(--r); padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.solo-locales { display: grid; gap: 10px; }
 .caja-ok { background: var(--ok-fondo); border-color: var(--ok); color: var(--tinta); }
 .aviso-almacen { margin-block: 12px; }
 .almacen-info { display: grid; gap: 6px; }

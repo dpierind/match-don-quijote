@@ -1,0 +1,1 @@
+{"servicio":"match-quijote","estatico":true,"nota":"Sitio sin servidor: los niveles se guardan en cada navegador. En Cloudflare Pages esta ruta la responde functions/api/[[ruta]].js."}

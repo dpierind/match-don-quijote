@@ -6,6 +6,15 @@ originales. Las marcadas como **configurables** se cambian por nivel en
 
 Cuando el grupo tome una decisión, anótenla aquí con la fecha y quiten la duda de la lista.
 
+## Decisiones tomadas
+
+- **2026-10-22 · Niveles compartidos.** Los niveles se guardan en un servidor (Cloudflare Pages + D1) y
+  los ve todo el que abre el juego. **Todos pueden crear y modificar niveles** (el grupo es de tres
+  personas y se crearán niveles en vivo durante la demostración). **Los cambios no necesitan
+  aprobación.** Se acepta que **las respuestas de referencia sean legibles por todos**, porque se
+  juega en el mismo dispositivo. La clave del grupo es opcional y se recomienda porque el enlace se
+  comparte por WhatsApp.
+
 ## Afectan a cómo se gana
 
 | # | Decisión | Interpretación provisional | Dónde se cambia |

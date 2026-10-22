@@ -117,6 +117,8 @@ Todo el código está en `src/`. En la raíz solo queda este README.
 | `src/transferencia.js` | Exportación e importación de niveles y copias de seguridad |
 | `src/ui-base.js`, `src/ui-juego.js`, `src/ui-editor.js`, `src/app.js` | Interfaz y arranque |
 | `src/sincronizar.js` | Instala y actualiza los niveles incluidos en el juego |
+| `src/remoto.js`, `src/ui-compartido.js` | Modo compartido: cliente del servidor e interfaz (refresco en vivo, clave del grupo) |
+| `src/servidor/api.js` | API del servidor (no se publica); `functions/api/[[ruta]].js` la conecta con Cloudflare |
 | `src/niveles/` | Niveles incluidos en el juego (los genera `npm run incluir`) |
 | `src/data/episodes.js` | Material de demostración (12 episodios provisionales) para el primer nivel |
 | `src/assets/` | Carpeta para ilustraciones con ruta fija (opcional) |
@@ -128,7 +130,16 @@ Todo el código está en `src/`. En la raíz solo queda este README.
 - Interfaz completa en Chromium, cerrando y reabriendo el navegador:
   `npm run test:e2e` (requiere `pip install playwright` y `playwright install chromium`).
 
-## 9. Publicar el juego y compartir niveles por un enlace
+## 9. Niveles compartidos (servidor)
+
+Publicado en Cloudflare Pages con una base de datos D1, el juego comparte los niveles: lo que
+alguien crea o modifica lo ven todos en pocos segundos, sin commits. Las partidas siguen guardándose
+en cada navegador. Si el servidor no responde, el juego funciona en modo local.
+
+- Configuración paso a paso: [`docs/servidor-compartido.md`](docs/servidor-compartido.md).
+- Probar en el computador con dos navegadores: `npm run compartido` → http://localhost:8787.
+
+## 10. Incluir niveles dentro del juego
 
 El juego se puede publicar gratis en GitHub Pages, con un enlace fijo para mandar por WhatsApp. Los
 niveles aprobados viajan dentro del juego (`src/niveles/`): quien abre el enlace los recibe y se
@@ -143,7 +154,7 @@ git add src/niveles && git commit -m "Nivel …" && git push
 
 La guía detallada, paso a paso, está en [`docs/publicar-niveles.md`](docs/publicar-niveles.md).
 
-## 10. Trabajar con un agente de programación
+## 11. Trabajar con un agente de programación
 
 La raíz del repositorio está preparada para trabajar con un agente como Claude Code:
 
@@ -159,7 +170,8 @@ La raíz del repositorio está preparada para trabajar con un agente como Claude
 | `docs/arquitectura.md` | Cómo se conectan los módulos, el ciclo de una acción, la partida, el editor y las imágenes |
 | `docs/formato-nivel.md` | Esquema del nivel, de la configuración, del ZIP exportado y de las partidas guardadas |
 | `docs/decisiones-pendientes.md` | Reglas que el grupo aún debe decidir y dónde se cambia cada una |
-| `docs/publicar-niveles.md` | Guía para publicar el juego en GitHub Pages e incluir niveles |
+| `docs/servidor-compartido.md` | Guía para configurar los niveles compartidos en Cloudflare |
+| `docs/publicar-niveles.md` | Guía para incluir niveles dentro del juego y publicar sin servidor |
 | `package.json` | Comandos: `npm test`, `npm run test:e2e`, `npm run validar -- <archivo>`, `npm run incluir -- <archivo>` y `npm run servir`. No tiene dependencias |
 | `src/tools/validar-nivel.js` | Informe de validación de un nivel desde la terminal (también en `--json`) |
 | `src/tools/incluir-nivel.js` | Incluye niveles exportados en el juego publicado |

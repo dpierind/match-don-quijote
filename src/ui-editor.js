@@ -35,7 +35,7 @@
       case 'sucio': return '<span class="estado-guardado aviso">Cambios sin guardar' + (E.autoguardado ? ' · se guardarán solos' : '') + '</span>';
       case 'error': return '<span class="estado-guardado error">Error al guardar</span>';
       case 'conflicto': return '<span class="estado-guardado error">Conflicto: no se guardó</span>';
-      default: return '<span class="estado-guardado ok">Guardado' + memoria + ' · versión ' + E.versionBase + (E.ultimoGuardado ? ' · ' + esc(E.ultimoGuardado) : '') + '</span>';
+      default: return '<span class="estado-guardado ok">' + (Q.compartido() ? 'Guardado en el servidor' : 'Guardado' + memoria) + ' · versión ' + E.versionBase + (E.ultimoGuardado ? ' · ' + esc(E.ultimoGuardado) : '') + '</span>';
     }
   }
   function pintarIndicador() {
@@ -139,7 +139,15 @@
     E.biblioteca = await Q.db.listarNiveles();
     E.biblioteca.sort(function (a, b) { return a.modificado < b.modificado ? 1 : -1; });
     E.almacen = { estimacion: await Q.db.estimacion(), persistido: await Q.db.estaPersistido() };
+    // En modo compartido, los niveles que quedaron solo en este navegador se pueden subir.
+    E.soloLocales = [];
+    if (Q.compartido() && Q.dbLocal) {
+      // La demostración que se crea sin conexión no se ofrece: el servidor tiene la suya.
+      try { E.soloLocales = (await Q.dbLocal.listarNiveles()).filter(function (n) { return n.id !== 'nivel-demostracion'; }); }
+      catch (e) { E.soloLocales = []; }
+    }
   }
+  Q.cargarBiblioteca = cargarBiblioteca;
 
   Q.acciones['ir-biblioteca'] = async function () {
     if (!(await Q.confirmarSalidaEditor())) return;
@@ -151,6 +159,11 @@
     var a = E.almacen || {};
     var est = a.estimacion;
     var uso = est && est.quota ? 'Espacio usado: ' + Q.tamano(est.usage) + ' de ' + Q.tamano(est.quota) + ' disponibles para este sitio.' : 'El navegador no informa del espacio disponible.';
+    if (Q.compartido()) {
+      return '<section class="caja caja-info almacen-info"><h3>Dónde se guardan los datos</h3>' +
+        '<p><strong>Los niveles y sus imágenes se guardan en el servidor del juego</strong>: todos los que abren el enlace ven los mismos niveles, y los cambios aparecen en pocos segundos. Las partidas guardadas quedan en este navegador.</p>' +
+        '<p class="nota">El servidor conserva las últimas versiones de cada nivel. Aun así, exporten una copia de seguridad de la biblioteca antes de una presentación importante.</p></section>';
+    }
     var modo = Q.db.modo === 'indexeddb'
       ? 'Los niveles, imágenes y partidas se guardan en este navegador (IndexedDB).'
       : 'Este navegador no permite guardar: todo se perderá al cerrar la página.';
@@ -192,12 +205,14 @@
       '<div><button class="btn btn-sutil btn-chico" data-accion="ir-menu">← Menú principal</button></div>' +
       '<header class="cabecera"><span class="eyebrow">Editor de niveles</span><h1>Biblioteca de niveles</h1>' +
       '<p class="lead">Cada nivel reúne sus episodios, imágenes, preguntas, tablero y reglas. Modificar un nivel no cambia los demás ni las partidas guardadas.</p></header>' +
+      (Q.bandaCompartida ? Q.bandaCompartida() : '') +
       '<div class="fila-botones">' +
       '<button class="btn btn-primario" data-accion="nuevo-nivel" data-foco="nuevo-nivel">Nuevo nivel</button>' +
       '<label class="btn">Importar nivel o copia<input type="file" class="sr" accept=".zip,.json,application/zip,application/json" data-archivo="importar"></label>' +
       '<button class="btn btn-sutil" data-accion="exportar-biblioteca" ' + (E.biblioteca.length ? '' : 'disabled') + '>Copia de seguridad de la biblioteca</button>' +
       '</div>' +
       (tarjetas ? '<ul class="lista-niveles">' + tarjetas + '</ul>' : '<div class="caja caja-info">La biblioteca está vacía. Creen un nivel nuevo o importen uno.</div>') +
+      (Q.seccionSoloLocales ? Q.seccionSoloLocales(E.soloLocales || []) : '') +
       infoAlmacen() + '</main>';
   };
 
@@ -282,6 +297,7 @@
     Q.confirmar({
       titulo: 'Eliminar «' + n.nombre + '»', si: 'Eliminar este nivel', peligro: true,
       texto: 'Se eliminará solo este nivel (' + Q.plural(n.episodios.length, 'episodio', 'episodios') + '). Los demás niveles no cambian y las partidas guardadas con él seguirán funcionando con su copia. ' +
+        (Q.compartido() ? 'El nivel desaparecerá para todos los que usan el juego (el servidor guarda sus versiones anteriores). ' : '') +
         (N.esIncluido(n) ? 'Como viene incluido en el juego, se volverá a instalar la próxima vez que abran el juego.' : 'Esta acción no se puede deshacer; exporten el nivel antes si quieren conservarlo.'),
       alSi: async function () {
         await Q.db.eliminarNivel(n.id);
@@ -416,7 +432,9 @@
 
   var TIPOS_IMAGEN = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
-  // Comprueba la imagen y, si es muy grande, la reduce a 1600 px para ahorrar espacio.
+  // Comprueba la imagen y, si es grande, la reduce para ahorrar espacio: como máximo 1600 px y
+  // 1,2 MB (el servidor compartido acepta hasta 1,4 MB por imagen).
+  var LIMITE_IMAGEN = 1.2 * 1024 * 1024;
   async function procesarImagen(archivo) {
     var tipo = archivo.type || '';
     if (TIPOS_IMAGEN.indexOf(tipo) < 0) throw Q.fallo('El formato de «' + archivo.name + '» no se admite. Usen PNG, JPEG o WebP.');
@@ -424,19 +442,30 @@
     var bmp;
     try { bmp = await createImageBitmap(archivo); }
     catch (e) { throw Q.fallo('No se pudo leer «' + archivo.name + '». Puede estar dañada o no ser una imagen.'); }
-    var w = bmp.width, h = bmp.height, MAX = 1600;
-    var reducir = tipo !== 'image/gif' && (w > MAX || h > MAX || archivo.size > 1.5 * 1024 * 1024);
+    var w = bmp.width, h = bmp.height;
+    var reducir = w > 1600 || h > 1600 || archivo.size > LIMITE_IMAGEN;
+    if (tipo === 'image/gif') {
+      if (bmp.close) bmp.close();
+      if (archivo.size > LIMITE_IMAGEN) throw Q.fallo('El GIF pesa ' + Q.tamano(archivo.size) + '; el máximo es 1,2 MB. Usen una imagen PNG, JPEG o WebP.');
+      return { blob: archivo, tipo: tipo, nombre: archivo.name, ancho: w, alto: h, reducida: false };
+    }
     if (!reducir) { if (bmp.close) bmp.close(); return { blob: archivo, tipo: tipo, nombre: archivo.name, ancho: w, alto: h, reducida: false }; }
-    var k = Math.min(1, MAX / Math.max(w, h));
-    var cw = Math.round(w * k), ch = Math.round(h * k);
-    var lienzo = document.createElement('canvas');
-    lienzo.width = cw; lienzo.height = ch;
-    lienzo.getContext('2d').drawImage(bmp, 0, 0, cw, ch);
-    if (bmp.close) bmp.close();
     var salida = tipo === 'image/jpeg' ? 'image/jpeg' : 'image/webp';
-    var blob = await new Promise(function (r) { lienzo.toBlob(r, salida, 0.86); });
-    if (!blob || blob.type !== salida) blob = await new Promise(function (r) { lienzo.toBlob(r, 'image/png'); });
+    var intentos = [[1600, 0.86], [1200, 0.8], [900, 0.75]];
+    var blob = null, cw = 0, ch = 0;
+    for (var i = 0; i < intentos.length; i++) {
+      var k = Math.min(1, intentos[i][0] / Math.max(w, h));
+      cw = Math.round(w * k); ch = Math.round(h * k);
+      var lienzo = document.createElement('canvas');
+      lienzo.width = cw; lienzo.height = ch;
+      lienzo.getContext('2d').drawImage(bmp, 0, 0, cw, ch);
+      blob = await new Promise(function (r) { lienzo.toBlob(r, salida, intentos[i][1]); });
+      if (!blob || blob.type !== salida) blob = await new Promise(function (r) { lienzo.toBlob(r, 'image/jpeg', intentos[i][1]); });
+      if (blob && blob.size <= LIMITE_IMAGEN) break;
+    }
+    if (bmp.close) bmp.close();
     if (!blob) throw Q.fallo('El navegador no pudo procesar la imagen.');
+    if (blob.size > LIMITE_IMAGEN) throw Q.fallo('No se pudo reducir «' + archivo.name + '» por debajo de 1,2 MB. Usen una imagen más simple o más pequeña.');
     return { blob: blob, tipo: blob.type, nombre: archivo.name, ancho: cw, alto: ch, reducida: true };
   }
 
@@ -532,7 +561,7 @@
     if (E.estado === 'conflicto') {
       var act = E.conflicto && E.conflicto.actual;
       conflicto = '<div class="caja caja-error conflicto" role="alert"><strong>No se guardaron sus cambios.</strong> ' +
-        (act ? 'Otra pestaña o ventana guardó la versión ' + act.version + ' de este nivel (' + Q.fecha(act.modificado) + ') mientras lo editaban.' : 'Este nivel se eliminó desde otra pestaña o ventana.') +
+        (act ? (Q.compartido() ? 'Otra persona' : 'Otra pestaña o ventana') + ' guardó la versión ' + act.version + ' de este nivel (' + Q.fecha(act.modificado) + ') mientras lo editaban.' : (Q.compartido() ? 'Otra persona eliminó este nivel mientras lo editaban.' : 'Este nivel se eliminó desde otra pestaña o ventana.')) +
         ' El guardado automático quedó en pausa para no sobrescribir nada.' +
         '<div class="fila-botones" style="margin-top:10px">' +
         '<button class="btn btn-primario btn-chico" data-accion="conflicto-copia">Guardar mis cambios como copia</button>' +

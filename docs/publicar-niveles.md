@@ -1,5 +1,10 @@
 # Publicar el juego y compartir niveles por un enlace
 
+> **Desde el 22 de octubre de 2026 el juego usa niveles compartidos en un servidor**
+> ([`servidor-compartido.md`](servidor-compartido.md)): los niveles se crean en el juego y todos los
+> ven al instante, sin commits. Esta guía sigue sirviendo para incluir niveles dentro del juego
+> (niveles iniciales o respaldo) y para publicar sin servidor.
+
 Esta guía explica cómo publicar «El match con Don Quijote» en un enlace fijo que puedes mandar por
 WhatsApp, y cómo incluir en él los niveles del grupo, de modo que quien abra el enlace reciba
 siempre la última versión del juego y de los niveles.

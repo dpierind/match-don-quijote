@@ -1,0 +1,192 @@
+/*
+ * El match con Don Quijote — interfaz del modo compartido.
+ * Solo actúa cuando el juego encontró su servidor (Q.compartido()):
+ *   - refresca las listas de niveles mientras otra persona crea o modifica niveles;
+ *   - en el editor, carga la versión nueva si otra persona guardó y aquí no hay cambios pendientes;
+ *   - pide y guarda la clave del grupo cuando el servidor la exige;
+ *   - permite subir al servidor los niveles que quedaron solo en este navegador.
+ */
+(function () {
+  'use strict';
+
+  var Q = window.Quijote, N = Q.N, esc = Q.esc;
+  var C = Q.ui.c = { pidiendoClave: false, claveTexto: '', avisoEliminado: '', revisando: false };
+  var INTERVALO_MS = 8000;
+
+  Q.claveGrupo = function () { return Q.preferencias.leer('claveGrupo', ''); };
+
+  /* ---------- Avisos ---------- */
+
+  Q.avisoServidor = function () {
+    if (!Q.servidorError) return '';
+    return '<div class="caja caja-aviso aviso-almacen" role="alert"><strong>No hay conexión con el servidor del juego.</strong> ' +
+      'Pueden jugar, pero los niveles que creen ahora quedarán solo en este navegador. (' + esc(Q.servidorError) + ') ' +
+      '<button class="btn btn-chico" data-accion="reintentar-servidor">Reintentar</button></div>';
+  };
+  Q.acciones['reintentar-servidor'] = function () { location.reload(); };
+
+  Q.bandaCompartida = function () {
+    if (!Q.compartido()) return '';
+    var clave = '';
+    if (Q.servidor && Q.servidor.requiereClave) {
+      clave = Q.claveGrupo()
+        ? ' <span class="chip chip-ok">Clave del grupo guardada</span> <button class="btn btn-sutil btn-chico" data-accion="pedir-clave">Cambiar clave</button>'
+        : ' <strong>Para crear o modificar niveles necesitan la clave del grupo.</strong> <button class="btn btn-chico" data-accion="pedir-clave">Escribir la clave</button>';
+    }
+    return '<div class="caja caja-compartida"><strong>Niveles compartidos.</strong> Lo que creen o modifiquen aquí lo ven en pocos segundos todos los que usan el juego.' + clave + '</div>';
+  };
+
+  /* ---------- Clave del grupo ---------- */
+
+  Q.pedirClave = function () { C.pidiendoClave = true; C.claveTexto = Q.claveGrupo(); };
+  Q.acciones['pedir-clave'] = function () { Q.pedirClave(); };
+  Q.acciones['cerrar-clave'] = function () { C.pidiendoClave = false; };
+  Q.alEscribir.clave = function (c, el) { C.claveTexto = el.value; };
+  Q.formularios.clave = async function () {
+    var v = String(C.claveTexto || '').trim();
+    if (!v) { Q.toast('Escriban la clave del grupo.', 'error'); return; }
+    Q.preferencias.guardar('claveGrupo', v);
+    var estado;
+    try { estado = await Q.db.estado(); } catch (e) { Q.mostrarError(e); return; }
+    if (estado.requiereClave && estado.claveValida === false) {
+      Q.preferencias.guardar('claveGrupo', '');
+      Q.toast('Esa clave no es correcta. Pídanla a quien configuró el juego.', 'error');
+      return;
+    }
+    C.pidiendoClave = false;
+    Q.toast('Clave guardada en este navegador. Ya pueden crear y modificar niveles.');
+    if (Q.ed && Q.ed.nivel && Q.ed.sucio && Q.guardarNivelEditor) Q.guardarNivelEditor({ auto: true });
+  };
+  Q.capas.push(function () {
+    if (!C.pidiendoClave) return '';
+    return '<div class="velo"><form class="panel" data-form="clave" role="dialog" aria-modal="true" aria-labelledby="t-clave" style="width:min(520px,100%)" novalidate>' +
+      '<h2 id="t-clave">Clave del grupo</h2>' +
+      '<p>Para crear, modificar o eliminar niveles compartidos hace falta la clave que definieron al configurar el juego. Jugar no la necesita.</p>' +
+      '<div class="campo"><label for="clave-grupo">Clave</label><input id="clave-grupo" data-campo="clave.texto" data-foco="clave-grupo" autocomplete="off" autocapitalize="off" spellcheck="false" value="' + esc(C.claveTexto) + '"></div>' +
+      '<p class="nota">Se guarda solo en este navegador.</p>' +
+      '<div class="fila-botones"><button type="submit" class="btn btn-primario">Guardar clave</button><button type="button" class="btn" data-accion="cerrar-clave">Cancelar</button></div>' +
+      '</form></div>';
+  });
+  Q.alEscape.push(function () { if (C.pidiendoClave) { C.pidiendoClave = false; return true; } return false; });
+
+  /* ---------- Niveles que quedaron solo en este navegador ---------- */
+
+  Q.seccionSoloLocales = function (lista) {
+    if (!Q.compartido() || !lista.length) return '';
+    var filas = lista.map(function (n) {
+      return '<li class="nivel-fila"><div class="info"><strong>' + esc(n.nombre) + '</strong>' +
+        '<span class="nota">' + Q.plural(n.episodios.length, 'episodio', 'episodios') + ' · modificado ' + Q.fecha(n.modificado) + '</span></div>' +
+        '<button class="btn btn-chico" data-accion="subir-local" data-id="' + esc(n.id) + '">Subir al servidor</button></li>';
+    }).join('');
+    return '<section class="solo-locales"><h2 class="subtitulo">Solo en este navegador</h2>' +
+      '<p class="nota">Estos niveles se crearon sin conexión con el servidor y nadie más los ve. Súbanlos para compartirlos.</p>' +
+      '<ul class="lista-niveles">' + filas + '</ul></section>';
+  };
+
+  Q.acciones['subir-local'] = function (d) {
+    Q.confirmar({
+      titulo: 'Subir al servidor', si: 'Subir',
+      texto: 'El nivel y sus imágenes pasarán al servidor y todos los verán. Después se quitará la copia que está solo en este navegador.',
+      alSi: async function () {
+        var orig = await Q.dbLocal.obtenerNivel(d.id);
+        if (!orig) { Q.toast('Ese nivel ya no está en este navegador.', 'error'); return; }
+        var n = N.copia(orig);
+        var mapa = {};
+        for (var i = 0; i < n.episodios.length; i++) {
+          var e = n.episodios[i];
+          var id = N.idImagen(e.imagen);
+          if (!id) continue;
+          if (!mapa[id]) {
+            var reg = await Q.dbLocal.obtenerImagen(id);
+            mapa[id] = reg && reg.blob ? 'img:' + await Q.db.guardarImagen({ blob: reg.blob, tipo: reg.tipo || reg.blob.type }) : '';
+          }
+          e.imagen = mapa[id];
+        }
+        n.version = 0;
+        n.origen = null;
+        var guardado;
+        try {
+          guardado = await Q.db.guardarNivel(n, { soloNuevo: true });
+        } catch (e) {
+          if (e.codigo !== 'existe') throw e;
+          n.id = N.nuevoId('nivel');
+          n.nombre = n.nombre + ' (de este navegador)';
+          guardado = await Q.db.guardarNivel(n, { soloNuevo: true });
+        }
+        await Q.dbLocal.eliminarNivel(orig.id);
+        Q.dbLocal.limpiarHuerfanas([]).catch(function () { /* limpieza opcional */ });
+        await Q.cargarBiblioteca();
+        Q.toast('«' + guardado.nombre + '» ya está en el servidor.');
+      }
+    });
+  };
+
+  /* ---------- Refresco en vivo ---------- */
+
+  function firmaDe(lista) {
+    return JSON.stringify((lista || []).map(function (x) { return [x.id, x.version]; }).sort());
+  }
+
+  function hayVentanaAbierta() {
+    return !!(Q.ui.modal || C.pidiendoClave || (Q.ed && (Q.ed.dialogo || Q.ed.importacion)));
+  }
+
+  async function refrescarEditor(resumen) {
+    var E = Q.ed;
+    if (!E || !E.nivel) return;
+    var entrada = resumen.filter(function (x) { return x.id === E.nivel.id; })[0];
+    if (!entrada) {
+      if (C.avisoEliminado !== E.nivel.id) {
+        C.avisoEliminado = E.nivel.id;
+        Q.toast('Otra persona eliminó este nivel. Si guardan, se les preguntará qué hacer con sus cambios.', 'error');
+      }
+      return;
+    }
+    if (entrada.version <= E.versionBase || E.sucio || E.estado !== 'guardado' || E.guardando) return;
+    var n = await Q.db.obtenerNivel(E.nivel.id);
+    if (!n || E.sucio || E.estado !== 'guardado' || !E.nivel || E.nivel.id !== n.id) return;
+    await Q.cargarImagenes(N.referenciasImagen(n));
+    E.nivel = N.copia(n);
+    E.versionBase = n.version;
+    if (E.epSel !== null && E.epSel >= n.episodios.length) E.epSel = n.episodios.length ? n.episodios.length - 1 : null;
+    Q.toast('Otra persona actualizó este nivel. Se cargó la versión ' + n.version + '.');
+    Q.render();
+  }
+
+  async function revisar() {
+    if (!Q.compartido() || C.revisando || document.hidden || hayVentanaAbierta()) return;
+    var p = Q.ui.pantalla;
+    if (['menu', 'jugar', 'biblioteca', 'editor'].indexOf(p) < 0) return;
+    C.revisando = true;
+    try {
+      var resumen = await Q.db.resumenNiveles();
+      if (hayVentanaAbierta() || Q.ui.pantalla !== p) return;
+      // Cada pantalla se compara con la lista que está mostrando.
+      var mostrada = p === 'jugar' ? Q.ui.j.listaNiveles : p === 'biblioteca' ? (Q.ed && Q.ed.biblioteca) : null;
+      if (mostrada && firmaDe(mostrada) === firmaDe(resumen)) return;
+      if (p === 'jugar') {
+        var lista = await Q.db.listarNiveles();
+        lista.sort(function (a, b) { return a.modificado < b.modificado ? 1 : -1; });
+        Q.ui.j.listaNiveles = lista;
+        Q.render();
+      } else if (p === 'biblioteca') {
+        await Q.cargarBiblioteca();
+        Q.render();
+      } else if (p === 'editor') {
+        await refrescarEditor(resumen);
+      }
+    } catch (e) {
+      /* sin conexión momentánea: se reintenta en la próxima revisión */
+    } finally {
+      C.revisando = false;
+    }
+  }
+  Q.revisarCompartido = revisar;
+
+  Q.iniciarRefresco = function () {
+    if (!Q.compartido()) return;
+    setInterval(revisar, INTERVALO_MS);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) revisar(); });
+    window.addEventListener('focus', revisar);
+  };
+})();

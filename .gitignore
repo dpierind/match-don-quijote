@@ -18,3 +18,8 @@ node_modules/
 
 # Exportaciones de niveles y copias de seguridad hechas al probar
 *.zip
+
+# Sitio preparado para publicar y datos del servidor local
+_sitio/
+.datos/
+.wrangler/

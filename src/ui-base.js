@@ -92,6 +92,7 @@
     var msg = (e && e.message) || 'Ocurrió un error inesperado.';
     if (e && ['ErrorJuego', 'ErrorAlmacen', 'ErrorZip', 'ErrorUsuario'].indexOf(e.name) < 0) console.error(e);
     Q.toast((contexto ? contexto + ': ' : '') + msg, 'error');
+    if (e && e.codigo === 'clave' && Q.pedirClave) { Q.pedirClave(); Q.render(); }
   };
 
   /*
@@ -147,7 +148,15 @@
 
   /* ---------- Imágenes guardadas (IndexedDB → URL del objeto) ---------- */
 
-  Q.imagenExiste = function (id) { return Q.imagenes.conocidas.has(id) && !Q.imagenes.rotas.has(id); };
+  // Modo compartido: niveles e imágenes viven en el servidor (src/remoto.js).
+  Q.compartido = function () { return !!(Q.db && Q.db.modo === 'servidor'); };
+
+  // En modo compartido otras personas suben imágenes en cualquier momento: se da por existente
+  // toda imagen que no haya fallado al cargarse.
+  Q.imagenExiste = function (id) {
+    if (Q.imagenes.rotas.has(id)) return false;
+    return Q.compartido() || Q.imagenes.conocidas.has(id);
+  };
   Q.urlImagen = function (id) { return Q.imagenes.urls.get(id) || null; };
 
   Q.cargarImagenes = async function (ids) {
@@ -188,7 +197,7 @@
     if (id) {
       var url = Q.urlImagen(id);
       if (url) return '<img src="' + url + '" alt="" data-emblema="' + Q.esc(ep.emblema) + '" data-titulo="' + Q.esc(ep.titulo) + '">';
-      if (Q.imagenes.rotas.has(id) || (Q.db && !Q.imagenes.conocidas.has(id))) {
+      if (Q.imagenes.rotas.has(id) || (Q.db && !Q.compartido() && !Q.imagenes.conocidas.has(id))) {
         return '<span class="marcador-titulo marcador-roto">' + (opciones.editor ? 'Imagen no encontrada' : Q.esc(ep.titulo)) + '</span>';
       }
       pedirCarga(id);

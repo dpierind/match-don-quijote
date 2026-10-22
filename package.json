@@ -1,16 +1,18 @@
 {
   "name": "match-don-quijote",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "description": "Juego de cartas educativo sobre Don Quijote de la Mancha, con editor de niveles. HTML, CSS y JavaScript sin dependencias.",
   "scripts": {
-    "test": "node --test src/tests/motor.test.js src/tests/niveles.test.js src/tests/incluidos.test.js",
-    "test:e2e": "python3 src/tests/interfaz_e2e.py && python3 src/tests/incluidos_e2e.py",
+    "test": "node --test src/tests/motor.test.js src/tests/niveles.test.js src/tests/incluidos.test.js src/tests/servidor.test.js src/tests/remoto.test.js",
+    "test:e2e": "python3 src/tests/interfaz_e2e.py && python3 src/tests/incluidos_e2e.py && python3 src/tests/compartido_e2e.py",
     "servir": "python3 -m http.server 8000 --directory src",
+    "compartido": "node src/tools/servidor-local.js",
+    "construir": "node src/tools/construir.js",
     "validar": "node src/tools/validar-nivel.js",
     "incluir": "node src/tools/incluir-nivel.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.13"
   }
 }

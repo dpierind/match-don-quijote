@@ -115,6 +115,8 @@
       } catch (e) {
         // Otra pestaña lo instaló al mismo tiempo: no es un error.
         if (e && (e.codigo === 'existe' || e.codigo === 'conflicto')) continue;
+        // Servidor con clave y visitante sin ella: lo instalará quien tenga la clave.
+        if (e && e.codigo === 'clave') continue;
         informe.errores.push('«' + ((entrada && entrada.nombre) || (entrada && entrada.id) || 'nivel') + '»: ' + ((e && e.message) || e));
       }
     }

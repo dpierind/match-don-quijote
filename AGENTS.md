@@ -15,11 +15,17 @@ Incluye un **editor de niveles**. Cada nivel reúne:
 - el tablero;
 - las reglas de ese nivel.
 
-Todo se guarda en el navegador (IndexedDB) y se puede exportar o importar en ZIP.
+El juego tiene **dos modos de almacenamiento**, que se eligen solos al arrancar:
 
-Los niveles aprobados se publican **dentro del juego**: se guardan en `src/niveles/`, el sitio se
-publica en GitHub Pages y cada navegador los instala o actualiza al abrir el enlace. El
-procedimiento completo está en [`docs/publicar-niveles.md`](docs/publicar-niveles.md).
+- **Compartido**: el sitio está publicado en Cloudflare Pages y responde `api/estado`. Los niveles y
+  las imágenes viven en la base de datos D1 y todos los ven; cualquiera puede crear y editar, sin
+  aprobación. Las partidas quedan en cada navegador. Guía: [`docs/servidor-compartido.md`](docs/servidor-compartido.md).
+- **Local**: archivo abierto con doble clic, un sitio estático o un servidor que no responde. Todo
+  queda en el navegador (IndexedDB) y se puede exportar o importar en ZIP.
+
+Además, los niveles pueden viajar **dentro del juego** (`src/niveles/`, `npm run incluir`), como se
+explica en [`docs/publicar-niveles.md`](docs/publicar-niveles.md). Con el servidor compartido ya no
+hace falta; queda para cargar niveles iniciales o como respaldo.
 
 Usuarios: un grupo escolar y su profesor. **La interfaz debe poder usarse sin saber programar.**
 
@@ -27,13 +33,15 @@ Usuarios: un grupo escolar y su profesor. **La interfaz debe poder usarse sin sa
 
 | Comando | Qué hace |
 |---|---|
-| `npm test` | Pruebas del motor, el modelo de niveles, el ZIP, el almacenamiento, la transferencia y los niveles incluidos (Node ≥ 18, sin instalar nada) |
-| `npm run test:e2e` | Juega una partida, prueba el editor y los niveles incluidos en Chromium, cerrando y reabriendo el navegador. Requiere `pip install playwright` y `playwright install chromium` |
+| `npm test` | Pruebas del motor, el modelo de niveles, el ZIP, el almacenamiento, la transferencia, los niveles incluidos, la API del servidor y el cliente remoto (Node ≥ 22.13, sin instalar nada) |
+| `npm run test:e2e` | En Chromium: partida y editor (modo local), niveles incluidos, y dos navegadores contra el servidor local (modo compartido). Requiere `pip install playwright` y `playwright install chromium` |
+| `npm run compartido` | Servidor local con niveles compartidos (SQLite en `.datos/`) en http://localhost:8787. Opciones `--clave`, `--red`, `--memoria`, `--puerto` |
+| `npm run construir` | Prepara `_sitio/` (src/ sin tests, tools, servidor ni api/). Es el comando de compilación de Cloudflare Pages |
 | `npm run incluir -- <nivel.zip>` | Incluye un nivel exportado en el juego publicado (`src/niveles/`). También `--lista`, `--quitar <id \| archivo>` y `--permitir-errores` |
 | `npm run validar -- <archivo>` | Informe de validación de un nivel `.zip`, `.json` o de `src/data/episodes.js`. Admite `--json`. Sale con 0 si se puede jugar, 1 si hay errores y 2 si no pudo leer el archivo |
 | `npm run servir` | Sirve `src/` en http://localhost:8000. Normalmente basta con abrir `src/index.html` con doble clic |
 
-No hay paso de compilación. No hay `npm install`: el proyecto no tiene dependencias.
+No hay `npm install`: el proyecto no tiene dependencias. `construir` solo copia archivos.
 
 ## Mapa del código
 
@@ -50,15 +58,22 @@ Todo el código está en `src/`. El detalle está en [`docs/arquitectura.md`](do
 | `ui-juego.js` | Interfaz | Menú, elegir nivel e informe, preparación, mesa, árbitro, cronología, resultados y partidas guardadas |
 | `ui-editor.js` | Interfaz | Biblioteca y editor: episodios, preguntas, tablero, configuración, importar/exportar, autoguardado |
 | `sincronizar.js` | Datos | Instala y actualiza los niveles incluidos; conserva como copia los cambios locales |
-| `app.js` | Arranque | Abre el almacenamiento, migra datos de la v1, sincroniza los niveles incluidos y crea la demostración si no hay niveles |
+| `remoto.js` | Persistencia | Cliente del servidor con **la misma interfaz que `db.js`**: niveles e imágenes en la API, partidas en el almacén local. `detectar()` decide el modo |
+| `ui-compartido.js` | Interfaz | Modo compartido: refresco en vivo cada 8 s, recarga del editor, clave del grupo, «Subir al servidor» |
+| `servidor/api.js` | Servidor | API REST sobre D1: niveles con control de versión (409 en conflicto), historial, imágenes por hash, clave opcional. Recibe `Request` y devuelve `Response`; se prueba en Node. **No se publica** |
+| `api/estado` | Contenido | Respuesta estática para sitios sin servidor (evita un 404). No se publica en Cloudflare |
+| `app.js` | Arranque | Abre el almacenamiento local, detecta el servidor, migra datos de la v1, sincroniza los niveles incluidos y crea la demostración si no hay niveles |
 | `niveles/` | Contenido publicado | `indice.js` y un `.js` por nivel incluido, generados por `npm run incluir`. **No se editan a mano** |
 | `data/episodes.js` | Contenido | 12 episodios **provisionales** de demostración |
 | `tools/validar-nivel.js` | Herramienta | Validación por terminal |
 | `tools/incluir-nivel.js` | Herramienta | Genera `niveles/<archivo>.js` e `indice.js` a partir de niveles exportados |
-| `tests/` | Pruebas | `motor.test.js`, `niveles.test.js`, `incluidos.test.js` (Node); `interfaz_e2e.py` e `incluidos_e2e.py` (Playwright) |
+| `tools/servidor-local.js`, `tools/d1-local.js` | Herramienta | Servidor de desarrollo con la API y una base compatible con D1 sobre `node:sqlite` |
+| `tools/construir.js` | Herramienta | Prepara `_sitio/` para publicar |
+| `tests/` | Pruebas | Node: `motor`, `niveles`, `incluidos`, `servidor`, `remoto`. Playwright: `interfaz_e2e.py`, `incluidos_e2e.py`, `compartido_e2e.py` |
 
-Fuera de `src/`: `.github/workflows/publicar.yml` ejecuta `npm test` y publica `src/` (sin `tests/` ni
-`tools/`) en GitHub Pages en cada `push` a `main`.
+Fuera de `src/`, por exigencia de cada plataforma:
+- `functions/api/[[ruta]].js`: Cloudflare Pages Functions. Solo conecta `/api/*` con `src/servidor/api.js`.
+- `.github/workflows/publicar.yml`: publicación en GitHub Pages (modo local). Se quita al pasar a Cloudflare (ver la guía, A10).
 
 ## Restricciones técnicas (no negociables)
 
@@ -68,6 +83,9 @@ Fuera de `src/`: `.github/workflows/publicar.yml` ejecuta `npm test` y publica `
      `window.<Nombre>` en el navegador.
    - El orden de los `<script>` en `index.html` importa: las dependencias van antes.
    - El material de demostración es un `.js` que asigna `window.MATERIAL_QUIJOTE`. No lo conviertas en `.json`.
+   - Excepción: `src/servidor/api.js` corre en Cloudflare (Workers) y en Node. Puede usar `Request`,
+     `Response`, `crypto.subtle`, `atob` y `btoa`, pero ninguna API exclusiva de Node ni de Cloudflare.
+     Cloudflare lo empaqueta desde `functions/` con `import`, y `require('../niveles.js')` funciona en ambos.
 2. **Sin dependencias externas.** Lo único externo son Google Fonts, siempre con tipografías de
    respaldo. No añadas CDN ni paquetes npm.
 3. **Separación de capas.**
@@ -118,6 +136,13 @@ Las pruebas los cubren. Si un cambio los rompe, está mal.
 - Una partida se puede guardar con una jugada pendiente. Al recuperarla, se retoma exactamente en esa etapa.
 - El guardado del editor nunca sobrescribe en silencio: si la versión guardada cambió, hay conflicto.
 - Copiar un nivel produce un nivel independiente. Eliminar un nivel no afecta a otros niveles ni a las partidas guardadas.
+- **Modo compartido**:
+  - El servidor es la fuente de verdad de los niveles.
+  - `guardarNivel` siempre envía `versionEsperada`; el servidor responde 409 si cambió, y la
+    interfaz muestra el conflicto. Nunca se sobrescribe en silencio.
+  - Eliminar un nivel lo retira (`eliminado = 1`), pero queda en el historial.
+  - Las imágenes se identifican por su contenido (`h` + sha256) y ningún cliente las borra.
+  - El editor solo se recarga con la versión de otra persona si no tiene cambios pendientes.
 - La sincronización de niveles incluidos **nunca borra ni pierde datos**:
   - si el nivel local fue editado, se guarda como copia «(mis cambios)» antes de actualizarlo;
   - si es un nivel creado aquí y más reciente que el publicado, no se toca;

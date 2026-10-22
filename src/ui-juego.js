@@ -154,6 +154,10 @@
   };
 
   Q.avisoAlmacen = function () {
+    if (Q.avisoServidor) {
+      var a = Q.avisoServidor();
+      if (a) return a;
+    }
     if (!Q.db || Q.db.modo !== 'memoria') return '';
     return '<div class="caja caja-error aviso-almacen" role="alert"><strong>Este navegador no permite guardar datos aquí.</strong> ' +
       'Los niveles, imágenes y partidas se perderán al cerrar la página. ' + (Q.db.motivo ? '(' + esc(Q.db.motivo) + ') ' : '') +

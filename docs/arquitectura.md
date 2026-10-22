@@ -75,6 +75,33 @@ fase 'transicion' → 'cronologia' → 'validacion' → 'resultados'
 - `Q.arte(ep)` dibuja la imagen. Si no hay imagen, dibuja el emblema provisional o un marcador con
   el título; si la referencia está rota, un aviso.
 
+## Modo compartido (servidor)
+
+```
+app.js: AlmacenQuijote.abrir() → Q.dbLocal
+        RemotoQuijote.detectar()  ─ estado → Q.db = RemotoQuijote.crear({ local: Q.dbLocal })   (modo «servidor»)
+                                  ─ sinServidor (file://, sitio estático) → Q.db = Q.dbLocal
+                                  ─ error → Q.db = Q.dbLocal y aviso «No hay conexión con el servidor»
+```
+
+- `remoto.js` tiene la misma interfaz que `db.js`. Niveles e imágenes van por la API; partidas y
+  estimación de espacio van al almacén local. Por eso el editor y el juego no distinguen el modo,
+  salvo en textos (`Q.compartido()`).
+- API (`src/servidor/api.js`), tablas en D1:
+  - `niveles(id, version, nombre, modificado, eliminado, contenido)`;
+  - `historial(id, version, modificado, contenido)`, con 50 versiones por nivel;
+  - `imagenes(id, tipo, tamano, datos base64, creada)`.
+
+  Las tablas se crean solas. `PUT niveles/:id` hace una comparación de versión en un `batch`
+  transaccional: `UPDATE … WHERE version = ?`.
+- `ui-compartido.js` revisa `GET niveles?resumen=1` cada 8 s en *menú, Jugar, Biblioteca y editor*:
+  - si la lista mostrada difiere, la vuelve a cargar;
+  - en el editor, carga la versión nueva solo si no hay cambios pendientes.
+- Clave del grupo: cabecera `X-Clave-Grupo`, guardada en `localStorage`. Un 401 abre la ventana de
+  la clave. `GET estado` con la cabecera responde `claveValida`.
+- Imágenes: en modo compartido, `Q.imagenExiste` da por existente toda imagen que no haya fallado
+  al cargar, porque otras personas suben imágenes en cualquier momento.
+
 ## Niveles incluidos
 
 ```
