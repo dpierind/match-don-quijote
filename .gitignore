@@ -1,0 +1,20 @@
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Python (pruebas de interfaz)
+__pycache__/
+*.pyc
+
+# Capturas y salidas de pruebas
+capturas/
+test-results/
+
+# Por si alguien instala algo por error (el proyecto no tiene dependencias)
+node_modules/
+
+# Configuración local de Claude Code (la compartida está en .claude/settings.json)
+.claude/settings.local.json
+
+# Exportaciones de niveles y copias de seguridad hechas al probar
+*.zip

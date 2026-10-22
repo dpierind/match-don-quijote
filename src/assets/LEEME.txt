@@ -1,0 +1,1 @@
+Coloquen aquí las ilustraciones definitivas (por ejemplo molinos.jpg) y escriban su ruta en el campo imagen: assets/molinos.jpg

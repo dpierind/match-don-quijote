@@ -1,0 +1,54 @@
+# Publica el juego en GitHub Pages cada vez que se suben cambios a la rama main.
+# Antes de publicar ejecuta las pruebas; si fallan, no se publica nada.
+# Activación (una sola vez): Settings → Pages → Source: «GitHub Actions».
+name: Publicar el juego
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Ejecutar pruebas
+        run: npm test
+
+  construir:
+    needs: pruebas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/configure-pages@v5
+      - name: Preparar la carpeta publicada (solo el juego, sin pruebas ni herramientas)
+        run: |
+          mkdir -p _sitio
+          cp -r src/. _sitio/
+          rm -rf _sitio/tests _sitio/tools
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _sitio
+
+  publicar:
+    needs: construir
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.despliegue.outputs.page_url }}
+    steps:
+      - id: despliegue
+        uses: actions/deploy-pages@v4
