@@ -133,27 +133,48 @@
 
   /*
    * Comprueba si la página se sirve junto con la API del juego.
-   * Devuelve { estado } si hay servidor, { sinServidor: true } si no existe (sitio estático o
-   * archivo local) o { error } si existe pero no responde bien.
+   * Devuelve:
+   *   { estado, detalle }       hay servidor (modo compartido);
+   *   { sinServidor, detalle }  sitio pensado sin servidor: archivo local, GitHub Pages o
+   *                             «npm run servir» (responden el archivo estático src/api/estado);
+   *   { error, detalle }        el sitio debería tener API pero no responde bien. Incluye el caso
+   *                             de Cloudflare sin Functions publicadas, que devuelve una página HTML.
+   * op.host permite indicar el dominio (para pruebas); por defecto, location.hostname.
    */
   async function detectar(op) {
     op = op || {};
     var base = op.base || 'api/';
     var obtener = op.fetch || function (u, i) { return fetch(u, i); };
-    if (op.protocolo && !/^https?:$/.test(op.protocolo)) return { sinServidor: true };
+    var host = op.host !== undefined ? op.host : (typeof location !== 'undefined' ? location.hostname : '');
+    var enCloudflare = /\.(pages|workers)\.dev$/i.test(host || '');
+    if (op.protocolo && !/^https?:$/.test(op.protocolo)) return { sinServidor: true, detalle: 'Archivo abierto directamente (' + op.protocolo + ')' };
     var control = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var t = control ? setTimeout(function () { control.abort(); }, op.esperaMs || 6000) : null;
     try {
       var r = await obtener(base + 'estado', { cache: 'no-store', signal: control ? control.signal : undefined });
-      if (r.status === 404 || r.status === 405) return { sinServidor: true };
+      var tipo = (r.headers && r.headers.get && r.headers.get('Content-Type')) || '';
+      var texto = '';
+      try { texto = await r.text(); } catch (e) { texto = ''; }
       var d = null;
-      try { d = await r.json(); } catch (e) { d = null; }
-      if (d && d.estatico) return { sinServidor: true };  // src/api/estado: sitio publicado sin servidor
-      if (r.ok && d && d.servicio === 'match-quijote') return { estado: d };
-      if (!d) return { sinServidor: true };  // respuesta que no es de este juego (p. ej., una página HTML)
-      return { error: d.mensaje || ('El servidor respondió con un error (' + r.status + ').') };
+      try { d = JSON.parse(texto); } catch (e) { d = null; }
+      var detalle = 'api/estado → ' + r.status + (tipo ? ' ' + tipo.split(';')[0] : '');
+      if (d && d.estatico) return { sinServidor: true, detalle: detalle + ' (sitio publicado sin servidor)' };
+      if (r.ok && d && d.servicio === 'match-quijote') return { estado: d, detalle: detalle };
+      if (d && d.mensaje) return { error: d.mensaje, detalle: detalle };
+      var esHtml = /<html|<!doctype/i.test(texto.slice(0, 500));
+      if (esHtml && r.ok) {
+        return {
+          error: 'La dirección api/estado devuelve una página en lugar de la API del juego. En Cloudflare significa que la API (carpeta functions/) no se publicó: revisen que el proyecto sea de tipo Pages (no Worker) y su configuración (docs/servidor-compartido.md).',
+          detalle: detalle + ' (página HTML)'
+        };
+      }
+      if (r.status === 404 || r.status === 405) {
+        if (enCloudflare) return { error: 'La API del juego no existe en este sitio (api/estado responde ' + r.status + '). ' + (/workers\.dev$/i.test(host) ? 'En un Worker, revisen wrangler.jsonc y el comando de despliegue «npx wrangler deploy»' : 'Revisen que la carpeta functions/ se haya publicado') + ' (docs/servidor-compartido.md).', detalle: detalle };
+        return { sinServidor: true, detalle: detalle };
+      }
+      return { error: 'El servidor respondió con un error (' + r.status + ').', detalle: detalle };
     } catch (e) {
-      return { error: 'No se pudo conectar con el servidor del juego.' };
+      return { error: 'No se pudo conectar con el servidor del juego.', detalle: 'api/estado → sin respuesta (' + ((e && e.name) || 'error') + ')' };
     } finally {
       if (t) clearTimeout(t);
     }

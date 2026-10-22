@@ -404,6 +404,16 @@ table.tabla { width: 100%; border-collapse: collapse; font-variant-numeric: tabu
 .estado-guardado.error { color: var(--error); background: var(--error-fondo); }
 .chip-incluido { color: var(--oro); background: var(--superficie); }
 .aviso-incluido { max-width: 1400px; margin: 12px auto 0; }
+.chip-modo { display: inline-flex; align-items: center; gap: 8px; align-self: start; justify-self: start; border: 1px solid var(--linea); background: var(--superficie); color: var(--tinta-2); border-radius: 999px; padding: 6px 12px; font: 600 .88rem/1.2 var(--f-ui); cursor: pointer; }
+.chip-modo .punto { width: 9px; height: 9px; border-radius: 50%; background: var(--tinta-3); flex: none; }
+.chip-modo.ok { border-color: var(--ok); color: var(--ok); }
+.chip-modo.ok .punto { background: var(--ok); }
+.chip-modo.error { border-color: var(--error); color: var(--error); }
+.chip-modo.error .punto { background: var(--error); }
+.texto-error { color: var(--error); }
+.lista-prueba { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.lista-prueba .bien { color: var(--ok); }
+.lista-prueba .mal { color: var(--error); }
 .caja-compartida { background: var(--superficie); border: 1px solid var(--oro); border-radius: var(--r); padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .solo-locales { display: grid; gap: 10px; }
 .caja-ok { background: var(--ok-fondo); border-color: var(--ok); color: var(--tinta); }

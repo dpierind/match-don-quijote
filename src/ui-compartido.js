@@ -121,6 +121,78 @@
     });
   };
 
+  /* ---------- Modo y estado del servidor ---------- */
+
+  Q.chipModo = function () {
+    var texto, clase;
+    if (Q.compartido()) { texto = 'Niveles compartidos en línea'; clase = 'ok'; }
+    else if (Q.servidorError) { texto = 'Sin conexión con el servidor: niveles solo en este navegador'; clase = 'error'; }
+    else { texto = 'Niveles guardados solo en este navegador'; clase = ''; }
+    return '<button class="chip-modo ' + clase + '" data-accion="ver-estado" data-foco="ver-estado" title="Ver el estado del servidor"><span class="punto" aria-hidden="true"></span>' + texto + '</button>';
+  };
+
+  var D = Q.ui.diag = { abierto: false, niveles: null, prueba: null, probando: false };
+
+  Q.acciones['ver-estado'] = async function () {
+    D.abierto = true; D.prueba = null; D.niveles = null;
+    if (Q.compartido()) {
+      try { D.niveles = (await Q.db.resumenNiveles()).length; } catch (e) { D.niveles = 'error: ' + e.message; }
+    }
+  };
+  Q.acciones['cerrar-estado'] = function () { D.abierto = false; };
+
+  // Crea un nivel de prueba, comprueba que se lee de vuelta y lo elimina.
+  Q.acciones['probar-servidor'] = async function () {
+    D.probando = true; D.prueba = null;
+    Q.render();
+    var id = 'diagnostico-' + Date.now().toString(36);
+    var pasos = [];
+    try {
+      await Q.db.guardarNivel(N.nuevoNivel({ nombre: 'Prueba de conexión (se elimina sola)' }), { soloNuevo: true }).then(function (n) { id = n.id; });
+      pasos.push({ ok: true, texto: 'Se guardó un nivel de prueba en el servidor.' });
+      var visto = (await Q.db.resumenNiveles()).some(function (x) { return x.id === id; });
+      pasos.push({ ok: visto, texto: visto ? 'Otros dispositivos lo pueden ver.' : 'El nivel no aparece en la lista del servidor.' });
+      await Q.db.eliminarNivel(id);
+      pasos.push({ ok: true, texto: 'Se eliminó el nivel de prueba.' });
+    } catch (e) {
+      pasos.push({ ok: false, texto: e.codigo === 'clave' ? 'El servidor pide la clave del grupo y la clave guardada no es correcta o falta.' : (e.message || String(e)) });
+    }
+    D.prueba = pasos;
+    D.probando = false;
+  };
+
+  Q.capas.push(function () {
+    if (!D.abierto) return '';
+    var filas = [];
+    var fila = function (k, v) { filas.push('<tr><th scope="row">' + k + '</th><td>' + v + '</td></tr>'); };
+    fila('Modo', Q.compartido() ? '<strong>Compartido</strong>: los niveles se guardan en el servidor y los ven todos.'
+      : Q.servidorError ? '<strong>Local por falta de servidor</strong>: los niveles quedan solo en este navegador.'
+        : '<strong>Local</strong>: los niveles quedan solo en este navegador.');
+    fila('Sitio', esc(location.origin + location.pathname));
+    fila('Comprobación', esc((Q.deteccion && Q.deteccion.detalle) || '—'));
+    if (Q.servidorError) fila('Problema', '<span class="texto-error">' + esc(Q.servidorError) + '</span>');
+    if (Q.compartido()) {
+      fila('Clave del grupo', Q.servidor && Q.servidor.requiereClave
+        ? 'El servidor la exige para editar. ' + (Q.claveGrupo() ? 'Hay una clave guardada en este navegador.' : '<strong>No hay clave guardada.</strong>')
+        : 'El servidor no exige clave: cualquiera con el enlace puede editar.');
+      fila('Niveles en el servidor', esc(D.niveles === null ? '…' : D.niveles));
+    }
+    var prueba = '';
+    if (D.probando) prueba = '<p class="nota">Probando…</p>';
+    else if (D.prueba) prueba = '<ul class="lista-prueba">' + D.prueba.map(function (p) { return '<li class="' + (p.ok ? 'bien' : 'mal') + '">' + (p.ok ? '✓ ' : '✗ ') + esc(p.texto) + '</li>'; }).join('') + '</ul>';
+    return '<div class="velo"><div class="panel" role="dialog" aria-modal="true" aria-labelledby="t-estado" style="width:min(640px,100%)">' +
+      '<div class="cabecera"><span class="eyebrow">Diagnóstico</span><h2 id="t-estado">Estado del servidor</h2></div>' +
+      '<div class="tabla-wrap"><table class="tabla tabla-informe"><tbody>' + filas.join('') + '</tbody></table></div>' + prueba +
+      '<div class="fila-botones">' +
+      (Q.compartido() ? '<button class="btn btn-primario" data-accion="probar-servidor" data-foco="probar-servidor"' + (D.probando ? ' disabled' : '') + '>Probar guardar en el servidor</button>' : '') +
+      (Q.compartido() && Q.servidor && Q.servidor.requiereClave ? '<button class="btn" data-accion="pedir-clave">' + (Q.claveGrupo() ? 'Cambiar la clave' : 'Escribir la clave') + '</button>' : '') +
+      (!Q.compartido() ? '<button class="btn" data-accion="reintentar-servidor">Reintentar conexión</button>' : '') +
+      '<button class="btn" data-accion="cerrar-estado" data-foco="cerrar-estado">Cerrar</button></div>' +
+      '<p class="nota">Para un diagnóstico completo desde el computador: <code>npm run diagnosticar -- ' + esc(location.origin) + ' --clave LA-CLAVE --escribir</code></p>' +
+      '</div></div>';
+  });
+  Q.alEscape.push(function () { if (D.abierto) { D.abierto = false; return true; } return false; });
+
   /* ---------- Refresco en vivo ---------- */
 
   function firmaDe(lista) {
@@ -128,7 +200,7 @@
   }
 
   function hayVentanaAbierta() {
-    return !!(Q.ui.modal || C.pidiendoClave || (Q.ed && (Q.ed.dialogo || Q.ed.importacion)));
+    return !!(Q.ui.modal || C.pidiendoClave || (Q.ui.diag && Q.ui.diag.abierto) || (Q.ed && (Q.ed.dialogo || Q.ed.importacion)));
   }
 
   async function refrescarEditor(resumen) {

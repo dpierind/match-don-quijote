@@ -37,6 +37,8 @@ Usuarios: un grupo escolar y su profesor. **La interfaz debe poder usarse sin sa
 | `npm run test:e2e` | En Chromium: partida y editor (modo local), niveles incluidos, y dos navegadores contra el servidor local (modo compartido). Requiere `pip install playwright` y `playwright install chromium` |
 | `npm run compartido` | Servidor local con niveles compartidos (SQLite en `.datos/`) en http://localhost:8787. Opciones `--clave`, `--red`, `--memoria`, `--puerto` |
 | `npm run construir` | Prepara `_sitio/` (src/ sin tests, tools, servidor ni api/). Es el comando de compilación de Cloudflare Pages |
+| `npm run diagnosticar -- <url> [--clave X] [--escribir]` | Prueba el sitio publicado paso a paso: página, API, base de datos, clave, escritura, conflicto e imagen. Dice qué corregir |
+| `python3 src/tests/compartido_e2e.py --url <url> [--clave X]` | Dos navegadores contra el sitio publicado: crean, ven y editan un nivel de prueba y lo eliminan al final |
 | `npm run incluir -- <nivel.zip>` | Incluye un nivel exportado en el juego publicado (`src/niveles/`). También `--lista`, `--quitar <id \| archivo>` y `--permitir-errores` |
 | `npm run validar -- <archivo>` | Informe de validación de un nivel `.zip`, `.json` o de `src/data/episodes.js`. Admite `--json`. Sale con 0 si se puede jugar, 1 si hay errores y 2 si no pudo leer el archivo |
 | `npm run servir` | Sirve `src/` en http://localhost:8000. Normalmente basta con abrir `src/index.html` con doble clic |
@@ -59,7 +61,7 @@ Todo el código está en `src/`. El detalle está en [`docs/arquitectura.md`](do
 | `ui-editor.js` | Interfaz | Biblioteca y editor: episodios, preguntas, tablero, configuración, importar/exportar, autoguardado |
 | `sincronizar.js` | Datos | Instala y actualiza los niveles incluidos; conserva como copia los cambios locales |
 | `remoto.js` | Persistencia | Cliente del servidor con **la misma interfaz que `db.js`**: niveles e imágenes en la API, partidas en el almacén local. `detectar()` decide el modo |
-| `ui-compartido.js` | Interfaz | Modo compartido: refresco en vivo cada 8 s, recarga del editor, clave del grupo, «Subir al servidor» |
+| `ui-compartido.js` | Interfaz | Modo compartido: refresco en vivo cada 8 s, recarga del editor, clave del grupo, «Subir al servidor», indicador de modo en el menú y panel «Estado del servidor» |
 | `servidor/api.js` | Servidor | API REST sobre D1: niveles con control de versión (409 en conflicto), historial, imágenes por hash, clave opcional. Recibe `Request` y devuelve `Response`; se prueba en Node. **No se publica** |
 | `api/estado` | Contenido | Respuesta estática para sitios sin servidor (evita un 404). No se publica en Cloudflare |
 | `app.js` | Arranque | Abre el almacenamiento local, detecta el servidor, migra datos de la v1, sincroniza los niveles incluidos y crea la demostración si no hay niveles |
@@ -72,7 +74,11 @@ Todo el código está en `src/`. El detalle está en [`docs/arquitectura.md`](do
 | `tests/` | Pruebas | Node: `motor`, `niveles`, `incluidos`, `servidor`, `remoto`. Playwright: `interfaz_e2e.py`, `incluidos_e2e.py`, `compartido_e2e.py` |
 
 Fuera de `src/`, por exigencia de cada plataforma:
-- `functions/api/[[ruta]].js`: Cloudflare Pages Functions. Solo conecta `/api/*` con `src/servidor/api.js`.
+- **El juego publicado es un Worker** (`match-don-quijote.cppierin.workers.dev`): `wrangler.jsonc`
+  (raíz) y `src/servidor/worker.mjs` responden `/api/*` y entregan `_sitio/`. Compilación:
+  `npm run construir`. Despliegue: `npx wrangler deploy`. D1 se enlaza como `DB` en `wrangler.jsonc`,
+  y `CLAVE_GRUPO` es un Secret del panel.
+- `functions/api/[[ruta]].js`: alternativa para proyectos de Cloudflare Pages. Solo conecta `/api/*` con `src/servidor/api.js`.
 - `.github/workflows/publicar.yml`: publicación en GitHub Pages (modo local). Se quita al pasar a Cloudflare (ver la guía, A10).
 
 ## Restricciones técnicas (no negociables)

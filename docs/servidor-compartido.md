@@ -140,6 +140,50 @@ niveles solo en cada navegador.
 
 ---
 
+## Parte W. Proyecto de tipo Worker (`*.workers.dev`)
+
+Si Cloudflare creó el proyecto como **Worker** (la dirección termina en `.workers.dev`), la carpeta
+`functions/` se ignora. El repositorio trae lo necesario para Workers:
+
+- `wrangler.jsonc`: nombre del Worker, archivos del juego (`_sitio/`) y base de datos D1 (`DB`).
+- `src/servidor/worker.mjs`: responde `/api/*` con la misma API y entrega el resto del juego.
+
+Pasos (una sola vez):
+
+1. **Copia el ID de la base de datos**: *Storage & Databases → D1 → match-quijote*, campo
+   **Database ID** (un código como `a1b2c3d4-…`). Pégalo en `wrangler.jsonc`, en lugar de
+   `PEGAR-AQUI-EL-DATABASE-ID`.
+2. **Revisa el nombre**: `"name"` en `wrangler.jsonc` debe ser el nombre del Worker. Para
+   `match-don-quijote.cppierin.workers.dev` es `match-don-quijote`.
+3. **Configura la compilación del Worker**: en *Workers & Pages → match-don-quijote → Settings → Build*:
+
+   | Campo | Valor |
+   |---|---|
+   | Build command | `npm run construir` |
+   | Deploy command | `npx wrangler deploy` |
+   | Root directory | `/` (vacío) |
+
+4. **Clave del grupo (recomendada)**: *Settings → Variables and Secrets → Add*. Tipo **Secret**,
+   nombre `CLAVE_GRUPO`. Los Secrets se conservan entre despliegues. No uses una variable de tipo
+   texto: `wrangler deploy` las borraría.
+5. **Publica**:
+   ```
+   git add wrangler.jsonc
+   git commit -m "Configuración del Worker con la base de datos"
+   git push
+   ```
+   Sigue la compilación en la pestaña **Deployments** o **Builds** del Worker.
+6. **Comprueba desde tu computador**:
+   ```
+   npm run diagnosticar -- https://match-don-quijote.cppierin.workers.dev --clave LA-CLAVE --escribir
+   ```
+   Todo debe salir con ✓. En el juego, el menú debe mostrar **«Niveles compartidos en línea»**.
+
+Los enlaces de la base de datos ya no se configuran en el panel, sino en `wrangler.jsonc`. Si
+agregaste un enlace `DB` a mano en el panel, `wrangler deploy` lo reemplaza por el del archivo.
+
+---
+
 ## Parte B. Durante la demostración
 
 - **Enlace para compartir**: `https://match-don-quijote.pages.dev/`.
@@ -209,8 +253,12 @@ En Cloudflare: **Storage & Databases → D1 → match-quijote → Console**.
 
 ## Problemas frecuentes
 
+Primero ejecuta `npm run diagnosticar -- https://SU-SITIO --clave LA-CLAVE --escribir`: prueba cada
+pieza y dice qué corregir. En el juego, el indicador del menú (o «Estado del servidor») muestra el modo.
+
 | Qué pasa | Qué hacer |
 |---|---|
+| La dirección termina en `.workers.dev` y el juego dice que `api/estado` devuelve una página o no existe | El proyecto es un Worker: sigue la parte W |
 | El juego dice «No hay conexión con el servidor» y menciona el enlace «DB» | Falta el paso A5, o falta volver a publicar (A7) |
 | La biblioteca no muestra «Niveles compartidos» | Estás abriendo otra dirección, por ejemplo la de GitHub Pages o `localhost:8000`. Usa la de Cloudflare |
 | Al guardar aparece la ventana «Clave del grupo» | El servidor tiene clave (A6). Escríbela; se guarda en ese navegador |

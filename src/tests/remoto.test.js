@@ -102,8 +102,14 @@ test('niveles incluidos en el juego se instalan una sola vez en el servidor', op
 test('detectar el servidor', async () => {
   const resp = (estado, cuerpo, tipo) => async () => new Response(cuerpo, { status: estado, headers: { 'Content-Type': tipo || 'application/json' } });
   assert.ok((await R.detectar({ fetch: resp(200, JSON.stringify({ ok: true, servicio: 'match-quijote' })) })).estado);
-  assert.ok((await R.detectar({ fetch: resp(404, 'No encontrado', 'text/html') })).sinServidor);
-  assert.ok((await R.detectar({ fetch: resp(200, '<html></html>', 'text/html') })).sinServidor);
+  assert.ok((await R.detectar({ host: 'localhost', fetch: resp(404, 'No encontrado', 'text/html') })).sinServidor);
+  // Cloudflare sin Functions publicadas: devuelve la página de inicio (200 HTML) → error visible, no modo local silencioso
+  const sinFunctions = await R.detectar({ host: 'match-don-quijote.pages.dev', fetch: resp(200, '<!DOCTYPE html><html><title>El match</title></html>', 'text/html') });
+  assert.match(sinFunctions.error, /functions\/\) no se publicó/);
+  assert.match(sinFunctions.detalle, /página HTML/);
+  assert.match((await R.detectar({ host: 'localhost', fetch: resp(200, '<html></html>', 'text/html') })).error, /devuelve una página/);
+  // Worker sin la API: 404 en un dominio de Cloudflare → error
+  assert.match((await R.detectar({ host: 'match-don-quijote.dpierind.workers.dev', fetch: resp(404, 'Not found', 'text/plain') })).error, /no existe en este sitio/);
   assert.ok((await R.detectar({ protocolo: 'file:' })).sinServidor);
   assert.ok((await R.detectar({ fetch: resp(200, JSON.stringify({ servicio: 'match-quijote', estatico: true }), 'application/octet-stream') })).sinServidor);
   assert.match((await R.detectar({ fetch: resp(500, JSON.stringify({ codigo: 'fallo', mensaje: 'Sin base de datos' })) })).error, /Sin base de datos/);

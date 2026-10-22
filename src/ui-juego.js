@@ -203,6 +203,7 @@
       '<button class="btn btn-sutil" data-accion="ir-partidas">Partidas guardadas' + (J.listaPartidas.length ? ' (' + J.listaPartidas.length + ')' : '') + '</button>' +
       '<a class="btn btn-sutil" href="#reglas">Reglas</a>' +
       '</div>' +
+      (Q.chipModo ? Q.chipModo() : '') +
       '</div>' +
       '<figure class="portada-ilustracion">' + grabadoPortada() +
       '<figcaption>Ilustración original en estilo de grabado, creada para este juego.</figcaption></figure>' +

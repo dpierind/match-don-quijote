@@ -1,7 +1,13 @@
-"""Prueba en Chromium del modo compartido: dos personas usan el juego a la vez contra el
-servidor local (src/tools/servidor-local.js), como durante una demostración.
+"""Prueba en Chromium del modo compartido: dos personas usan el juego a la vez, como durante
+una demostración.
 
-Ejecutar:  python3 src/tests/compartido_e2e.py   (requiere Node 22.13+ y Playwright)
+Ejecutar:
+  python3 src/tests/compartido_e2e.py
+      contra el servidor local (src/tools/servidor-local.js); incluye clave y falta de conexión.
+  python3 src/tests/compartido_e2e.py --url https://SU-SITIO [--clave LA-CLAVE]
+      contra el sitio publicado: dos navegadores crean, ven y editan un nivel de prueba, y al
+      final lo eliminan. No modifica los niveles existentes.
+Requiere Node 22.13+ y Playwright.
 """
 import pathlib, socket, struct, subprocess, sys, tempfile, time, zlib, shutil
 from playwright.sync_api import sync_playwright
@@ -9,6 +15,9 @@ from playwright.sync_api import sync_playwright
 SRC = pathlib.Path(__file__).resolve().parent.parent
 TMP = pathlib.Path(tempfile.mkdtemp(prefix="quijote-compartido-"))
 resultados, errores, procesos = [], [], []
+URL_EXTERNA = sys.argv[sys.argv.index("--url") + 1] if "--url" in sys.argv else None
+CLAVE = sys.argv[sys.argv.index("--clave") + 1] if "--clave" in sys.argv else ""
+creados = []
 
 
 def ok(nombre, cond):
@@ -47,8 +56,10 @@ IMAGEN = TMP / "molino.png"
 IMAGEN.write_bytes(png((40, 90, 150)))
 
 
-def abrir(nav, url):
+def abrir(nav, url, clave=""):
     ctx = nav.new_context(viewport={"width": 1366, "height": 860})
+    if clave:
+        ctx.add_init_script("try { localStorage.setItem('matchQuijote.pref.claveGrupo', JSON.stringify(%s)); } catch (e) {}" % repr(clave).replace("'", '"'))
     pag = ctx.new_page()
     pag.on("pageerror", lambda e: errores.append(str(e)))
     pag.on("console", lambda m: errores.append(m.text) if m.type == "error" and "fonts.g" not in str(m.location.get("url", "")) and "status of 40" not in m.text and "ERR_FAILED" not in m.text else None)
@@ -64,14 +75,28 @@ def niveles_servidor(pag):
 try:
     with sync_playwright() as p:
         nav = p.chromium.launch()
-        puerto = puerto_libre()
-        arrancar(puerto)
-        URL = f"http://127.0.0.1:{puerto}/"
+        if URL_EXTERNA:
+            URL = URL_EXTERNA.rstrip("/") + "/"
+        else:
+            puerto = puerto_libre()
+            arrancar(puerto)
+            URL = f"http://127.0.0.1:{puerto}/"
 
-        ctx_a, ana = abrir(nav, URL)
-        ctx_b, beto = abrir(nav, URL)
-        ok("detecta el servidor y entra en modo compartido", ana.evaluate("Quijote.compartido()") and beto.evaluate("Quijote.compartido()"))
-        ok("la demostración se crea una sola vez para todos", niveles_servidor(beto) == ["Demostración · 12 episodios provisionales"])
+        ctx_a, ana = abrir(nav, URL, CLAVE)
+        ctx_b, beto = abrir(nav, URL, CLAVE)
+        modo_ok = ana.evaluate("Quijote.compartido()") and beto.evaluate("Quijote.compartido()")
+        ok("detecta el servidor y entra en modo compartido", modo_ok)
+        if not modo_ok:
+            print("  Detección:", ana.evaluate("JSON.stringify(Quijote.deteccion)"))
+            raise SystemExit(1)
+        demos = [n for n in niveles_servidor(beto) if n.startswith("Demostración")]
+        ok("la demostración existe una sola vez para todos", len(demos) == 1)
+        ok("el menú muestra «Niveles compartidos en línea»", "Niveles compartidos en línea" in ana.locator(".chip-modo").inner_text())
+        ana.click("[data-accion=ver-estado]")
+        ana.click("[data-accion=probar-servidor]")
+        ana.wait_for_selector(".lista-prueba li >> nth=2", timeout=10000)
+        ok("el panel de estado prueba guardar, ver y eliminar en el servidor", ana.locator(".lista-prueba .bien").count() == 3)
+        ana.click("[data-accion=cerrar-estado]")
 
         # Beto deja abierta la pantalla «Jugar»
         beto.click("[data-accion=ir-jugar]")
@@ -85,6 +110,7 @@ try:
         ana.fill("#dlg-nombre", "Nivel en vivo")
         ana.click("button:has-text('Crear nivel')")
         ana.wait_for_selector(".pestanas")
+        creados.append(ana.evaluate("Quijote.ed.nivel.id"))
         ana.click("[data-accion=nuevo-ep]")
         ana.fill("#f-titulo", "Los molinos de viento")
         ana.fill("#f-capitulo", "8")
@@ -137,6 +163,7 @@ try:
         beto.click("button:has-text('Guardar copia')")
         beto.wait_for_function("document.querySelector('#indicador-guardado') && document.querySelector('#indicador-guardado').innerText.startsWith('Guardado en el servidor')", timeout=8000)
         ok("los cambios en conflicto se pueden guardar como copia compartida", "Versión de Beto" in niveles_servidor(ana))
+        creados.append(beto.evaluate("Quijote.ed.nivel.id"))
         beto.screenshot(path=str(TMP / "beto.png"))
 
         # Partidas: quedan en cada navegador
@@ -151,7 +178,26 @@ try:
         ok("las partidas se guardan en cada navegador, no en el servidor",
            ana.evaluate("(async () => (await Quijote.db.listarPartidas()).length)()") == 1
            and beto.evaluate("(async () => (await Quijote.db.listarPartidas()).length)()") == 0)
+        if URL_EXTERNA:
+            # Limpieza: elimina los niveles de prueba del sitio publicado.
+            for nid in creados:
+                ana.evaluate("(async (id) => { try { await Quijote.db.eliminarNivel(id); } catch (e) {} })", nid)
+            ok("se eliminaron los niveles de prueba", not any(n.startswith(("Nivel en vivo", "Versión de Beto")) for n in niveles_servidor(ana)))
+            ana.evaluate("(async () => { for (const p of await Quijote.db.listarPartidas()) await Quijote.db.eliminarPartida(p.id); })()")
+            ctx_a.close(); ctx_b.close()
+            nav.close()
+            raise SystemExit(0)
         ctx_a.close(); ctx_b.close()
+
+        # ---------- Sitio publicado sin la API (Worker sin configurar) ----------
+        ctx_w, wendy = abrir(nav, URL)
+        wendy.route("**/api/estado", lambda ruta: ruta.fulfill(status=200, content_type="text/html", body="<!doctype html><html><title>El match con Don Quijote</title></html>"))
+        wendy.reload()
+        wendy.wait_for_selector(".menu-principal", timeout=20000)
+        ok("sitio sin API: el juego avisa en vez de quedar en modo local en silencio",
+           not wendy.evaluate("Quijote.compartido()") and "Sin conexión con el servidor" in wendy.locator(".chip-modo").inner_text()
+           and wendy.locator("text=devuelve una página en lugar de la API").count() >= 1)
+        ctx_w.close()
 
         # ---------- Servidor con clave del grupo ----------
         puerto2 = puerto_libre()
@@ -206,6 +252,8 @@ try:
         ok("«Subir al servidor» lo comparte y quita la copia local", "Creado sin conexión" in niveles_servidor(dani))
         ctx_d.close()
         nav.close()
+except SystemExit:
+    pass
 finally:
     for pr in procesos:
         if pr.poll() is None:

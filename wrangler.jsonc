@@ -1,0 +1,32 @@
+// Configuración de Cloudflare Workers para «El match con Don Quijote».
+// La usa «npx wrangler deploy» (comando de despliegue de Workers Builds) y «npx wrangler dev».
+// Instrucciones: docs/servidor-compartido.md, parte «Proyecto de tipo Worker».
+{
+  // Debe coincidir con el nombre del Worker en Cloudflare (match-don-quijote.<cuenta>.workers.dev).
+  "name": "match-don-quijote",
+  "main": "src/servidor/worker.mjs",
+  "compatibility_date": "2025-09-01",
+
+  // Archivos del juego: los prepara «npm run construir» (comando de compilación).
+  "assets": {
+    "directory": "./_sitio",
+    "binding": "ASSETS",
+    // El Worker recibe todas las peticiones: responde /api/* y entrega el resto desde ASSETS.
+    "run_worker_first": true
+  },
+
+  // Base de datos D1 con los niveles. Copien el «Database ID» desde
+  // Cloudflare → Storage & Databases → D1 → match-quijote.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "match-quijote",
+      "database_id": "91fa6958-ecb8-4e2e-a06e-f1d896f1cc9c"
+    }
+  ],
+
+  // La clave del grupo NO va aquí: se define como Secret «CLAVE_GRUPO» en el panel
+  // (Settings → Variables and Secrets). Los Secrets se conservan en cada despliegue.
+
+  "observability": { "enabled": true }
+}

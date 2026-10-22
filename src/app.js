@@ -14,6 +14,7 @@
   Q.dbLocal = await window.AlmacenQuijote.abrir();
   Q.db = Q.dbLocal;
   var deteccion = await window.RemotoQuijote.detectar({ protocolo: location.protocol });
+  Q.deteccion = deteccion;
   if (deteccion.estado) {
     Q.servidor = deteccion.estado;
     Q.db = window.RemotoQuijote.crear({ local: Q.dbLocal, clave: Q.claveGrupo });
